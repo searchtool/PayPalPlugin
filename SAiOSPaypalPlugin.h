@@ -9,6 +9,13 @@
 #import <Cordova/CDVPlugin.h>
 #import "PayPal.h"
 
+typedef enum PaymentStatuses {
+	PAYMENTSTATUS_SUCCESS,
+	PAYMENTSTATUS_FAILED,
+	PAYMENTSTATUS_CANCELED,
+} PaymentStatus;
+
+
 @interface PaypalPaymentInfo : NSObject
 {
 	NSString* paymentCurrency;
@@ -16,6 +23,8 @@
 	NSString* itemDesc;
 	NSString* recipient;
 	NSString* merchantName;
+	NSString* nameItem;
+    NSString* priceItem;
 }
 
 @property (nonatomic, copy) NSString* paymentCurrency;
@@ -23,13 +32,16 @@
 @property (nonatomic, copy) NSString* itemDesc;
 @property (nonatomic, copy) NSString* recipient;
 @property (nonatomic, copy) NSString* merchantName;
-
+@property (nonatomic, copy) NSString* nameItem;
+@property (nonatomic, copy) NSString* priceItem;
 @end
 
 
-@interface SAiOSPaypalPlugin : CDVPlugin<PayPalMEPDelegate> {
+@interface SAiOSPaypalPlugin : CDVPlugin<PayPalPaymentDelegate> {
 	UIButton* paypalButton;
 	PaypalPaymentInfo* paymentInfo;
+	PaymentStatus status;
+    NSString* transaction;
 }
 
 @property (nonatomic, retain) UIButton* paypalButton;

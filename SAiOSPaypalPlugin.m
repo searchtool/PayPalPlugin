@@ -7,13 +7,14 @@
 
 #import "SAiOSPaypalPlugin.h"
 #import "PayPal.h"
-#import "PayPalMEPPayment.h"
-#import "MEPAddress.h" // use for dynamic amount calculation
-#import "MEPAmounts.h" // use for dynamic amount calculation
+#import "PayPalPayment.h"
+#import "PayPalAddress.h" // use for dynamic amount calculation
+#import "PayPalAmounts.h" // use for dynamic amount calculation
+#import "PayPalInvoiceItem.h"
 
 @implementation PaypalPaymentInfo
 
-@synthesize paymentCurrency, paymentAmount, itemDesc, recipient, merchantName;
+@synthesize paymentCurrency, paymentAmount, itemDesc, recipient, merchantName,priceItem,nameItem;
 
 - (void) dealloc
 {
@@ -22,7 +23,9 @@
 	self.itemDesc = nil;
 	self.recipient = nil;
 	self.merchantName = nil;
-	
+	self.priceItem = nil;
+    self.nameItem = nil;
+
 	[super dealloc];
 }
 
@@ -32,7 +35,7 @@
 
 @synthesize paypalButton, paymentInfo;
 
-#define NO_APP_ID	@"dummy"
+#define NO_APP_ID	@"APP-80W284485P519543T"
 
 /* Get one from Paypal at developer.paypal.com */
 #define PAYPAL_APP_ID	NO_APP_ID
@@ -53,6 +56,20 @@
 		}
 		
 		[PayPal initializeWithAppID:PAYPAL_APP_ID forEnvironment:PAYPAL_APP_ENV];
+
+		if ([PayPal initializationStatus] == STATUS_NOT_STARTED) {
+            NSLog(@"STATUS_NOT_STARTED");
+        }
+        if ([PayPal initializationStatus] == STATUS_COMPLETED_ERROR) {
+            NSLog(@"STATUS_COMPLETED_ERROR");
+        }
+        if ([PayPal initializationStatus] == STATUS_INPROGRESS) {
+            NSLog(@"STATUS_INPROGRESS");
+        }
+        if ([PayPal initializationStatus] == STATUS_COMPLETED_SUCCESS) {
+            NSLog(@"STATUS_COMPLETED_SUCCESS");
+        }
+
     }
     return self;
 }
@@ -73,13 +90,9 @@
 	NSString* strValue = [arguments objectAtIndex:0];
 	NSInteger paymentType = [strValue intValue];
 
-	self.paypalButton = [[PayPal getInstance] getPayButton:(UIViewController*)self /* requiring it to be a UIViewController is dumb paypal, it should be 'id' - especially since it's just for delegate callbacks */ 
-												buttonType:0
-											 startCheckOut:@selector(payWithPaypal) 
-											   PaymentType:paymentType
-												  withLeft:0 
-												   withTop:0];
-	
+	self.paypalButton = [[PayPal getPayPalInst] getPayButtonWithTarget:self andAction:@selector(payWithPaypal) andButtonType: BUTTON_294x43];
+    [self.paypalButton addTarget:self action:@selector(payWithPaypal) forControlEvents:UIControlEventTouchUpInside];
+
 	[super.webView addSubview:self.paypalButton];
 	self.paypalButton.hidden = YES;
 
@@ -90,6 +103,19 @@
 - (void) pay:(NSMutableArray*)arguments withDict:(NSMutableDictionary*)options
 {
 	if (self.paypalButton != nil) {
+	    if ([PayPal initializationStatus] == STATUS_NOT_STARTED) {
+        	NSLog(@"STATUS_NOT_STARTED");
+        }
+        if ([PayPal initializationStatus] == STATUS_COMPLETED_ERROR) {
+        	NSLog(@"STATUS_COMPLETED_ERROR");
+        }
+        if ([PayPal initializationStatus] == STATUS_INPROGRESS) {
+        	NSLog(@"STATUS_INPROGRESS");
+        }
+        if ([PayPal initializationStatus] == STATUS_COMPLETED_SUCCESS) {
+        	NSLog(@"STATUS_COMPLETED_SUCCESS");
+        }
+
 		[self.paypalButton sendActionsForControlEvents:UIControlEventTouchUpInside];
 	} else {
 		NSLog(@"SAiOSPaypalPlugin.pay - payment not initialized. Call SAiOSPaypalPlugin.prepare(paymentType)");
@@ -108,16 +134,20 @@
 {
 	if (self.paymentInfo)
 	{
-		PayPal *pp = [PayPal getInstance];
-		PayPalMEPPayment *payment =[[PayPalMEPPayment alloc] init];
+		PayPalPayment *payment =[[PayPalPayment alloc] init];
 
 		payment.paymentCurrency = self.paymentInfo.paymentCurrency;
-		payment.paymentAmount	= self.paymentInfo.paymentAmount;
-		payment.itemDesc		= self.paymentInfo.itemDesc;
-		payment.recipient		= self.paymentInfo.recipient;
+		payment.subTotal	= [NSDecimalNumber decimalNumberWithString:self.paymentInfo.paymentAmount];
+		payment.description		= self.paymentInfo.itemDesc;
+        payment.recipient		= self.paymentInfo.recipient;
 		payment.merchantName	= self.paymentInfo.merchantName;
 
-		[pp Checkout:payment];
+        PayPalInvoiceItem *item = [[[PayPalInvoiceItem alloc] init] autorelease];
+
+        item.name = self.paymentInfo.nameItem;
+        item.itemPrice=[NSDecimalNumber decimalNumberWithString:self.paymentInfo.priceItem];
+
+		[[PayPal getPayPalInst] checkoutWithPayment:payment];
 		[payment release];
 
 		NSLog(@"SAiOSPaypalPlugin.payWithPaypal - payment sent. currency:%@ amount:%@ desc:%@ recipient:%@ merchantName:%@",
@@ -133,46 +163,75 @@
 #pragma mark -
 #pragma mark Paypal delegates
 
-- (void) paymentSuccess:(NSString*)transactionID 
+- (void)paymentSuccessWithKey:(NSString *)payKey andStatus:(PayPalPaymentStatus)paymentStatus
 {
-	NSString* jsString = 
-	@"(function() {"
-	"var e = document.createEvent('Events');"
-	"e.initEvent('PaypalPaymentEvent.Success');"
-	"e.transactionID = '%@';"
-	"document.dispatchEvent(e);"
-	"})();";
-	
-	[super writeJavascript:[NSString stringWithFormat:jsString, transactionID]];
-	
-	NSLog(@"SAiOSPaypalPlugin.paymentSuccess - transactionId:%@", transactionID);
-}
+	NSLog(@"paymentSuccessWithKey");
+	NSString *severity = [[PayPal getPayPalInst].responseMessage objectForKey:@"severity"];
+	NSLog(@"severity: %@", severity);
+	NSString *category = [[PayPal getPayPalInst].responseMessage objectForKey:@"category"];
+	NSLog(@"category: %@", category);
+	NSString *errorId = [[PayPal getPayPalInst].responseMessage objectForKey:@"errorId"];
+	NSLog(@"errorId: %@", errorId);
+	NSString *message = [[PayPal getPayPalInst].responseMessage objectForKey:@"message"];
+	NSLog(@"message: %@", message);
+	NSLog(@"paykey:%@", payKey);
 
+	status = PAYMENTSTATUS_SUCCESS;
+
+	NSString* transactionId = [[NSString alloc] initWithString:[payKey substringFromIndex:3]];
+    	transaction = transactionId;
+}
 - (void) paymentCanceled 
 {
-	NSString* jsString = 
-	@"(function() {"
-	"var e = document.createEvent('Events');"
-	"e.initEvent('PaypalPaymentEvent.Canceled');"
-	"document.dispatchEvent(e);"
-	"})();";
-	
-	[super writeJavascript:jsString];	
+	NSLog(@"paymentCanceled");
+	status = PAYMENTSTATUS_CANCELED;
 }
 
-- (void) paymentFailed:(PAYPAL_FAILURE)errorType
+-(void)paymentFailedWithCorrelationID:(NSString *)correlationID
 {
-	NSString* jsString = 
-	@"(function() {"
-	"var e = document.createEvent('Events');"
-	"e.initEvent('PaypalPaymentEvent.Failed');"
-	"e.errorType = %d;"
-	"document.dispatchEvent(e);"
-	"})();";
-	
-	[super writeJavascript:[NSString stringWithFormat:jsString, errorType]];	
-
-	NSLog(@"SAiOSPaypalPlugin.paymentFailed - errorType:%d", errorType);
+	NSLog(@"paymentFailed");
+	status = PAYMENTSTATUS_FAILED;
 }
 
+- (void)paymentLibraryExit
+{
+NSLog(@"LibraryExit");
+NSLog(@"transactionId:%@ ",transaction);
+	NSString* jsString;
+	switch (status) {
+		case PAYMENTSTATUS_SUCCESS:
+
+			jsString = [NSString stringWithFormat:@"(function() {"
+			"var e = document.createEvent('Events');"
+			"e.initEvent('PaypalPaymentEvent.Success');"
+			"e.transactionID = '%@';"
+			"document.dispatchEvent(e);"
+			"})();",transaction];
+			[super writeJavascript:[NSString stringWithFormat:jsString]];
+
+			NSLog(@"SAiOSPaypalPlugin.paymentSuccess");
+
+			break;
+		case PAYMENTSTATUS_FAILED:
+		  jsString = @"(function() {"
+			"var e = document.createEvent('Events');"
+			"e.initEvent('PaypalPaymentEvent.Failed');"
+			"document.dispatchEvent(e);"
+			"})();";
+
+			[super writeJavascript:[NSString stringWithFormat:jsString]];
+
+			NSLog(@"SAiOSPaypalPlugin.paymentFailed");
+				break;
+		case PAYMENTSTATUS_CANCELED:
+			jsString = @"(function() {"
+			"var e = document.createEvent('Events');"
+			"e.initEvent('PaypalPaymentEvent.Canceled');"
+			"document.dispatchEvent(e);"
+			"})();";
+
+			[super writeJavascript:jsString];
+			break;
+	}
+}
 @end
